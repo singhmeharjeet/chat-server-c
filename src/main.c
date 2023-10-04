@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-#include "hello.h"
+#include "stalk.h"
 
 int main(int argc, char** argv) {
 	hello();

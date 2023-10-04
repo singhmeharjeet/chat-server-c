@@ -4,6 +4,7 @@ project(multithreaded_server)
 
 set (SOURCES
 	main.c
+	stalk.c
 )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
