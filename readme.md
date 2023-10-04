@@ -1,4 +1,4 @@
-# Project Name
+# S Talk
 
 This project is a C implementation of a multithreaded chat server.
 
@@ -17,20 +17,10 @@ Follow these steps to install and set up the multithreaded chat server:
 You can clone the project using the following command:
 
 ```bash
-git clone https://github.com/your-username/multithreaded-chat-server.git
+git clone "https://github.com/singhmeharjeet/chat-server-c.git"
 ```
 
-Alternatively, you can download the ZIP and extract it to your desired location.
-
-### 2. Navigate to the Project Folder
-
-Navigate to the project folder using the terminal:
-
-```bash
-cd multithreaded-chat-server
-```
-
-### 3. Build the Project
+### 2. Build the Project
 
 In the terminal, run the following commands to build the project:
 
@@ -39,7 +29,7 @@ In the terminal, run the following commands to build the project:
 In the `build` folder, run `cmake ..` to configure the project:
 
 ```bash
-cmake ..
+mkdir build; cd build; cmake ..
 ```
 
 #### 3.2. Compile the Project
@@ -51,7 +41,7 @@ make
 ### 4. Run the Server
 
 ```bash
-./multithreaded_server
+./src/multithreaded_server
 ```
 
 ## Usage
