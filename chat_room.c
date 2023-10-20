@@ -11,6 +11,10 @@
 
 #define BUF_SIZE 500
 
+#define NO_TERMINATE	 0
+#define LOCAL_TERMINATE	 1
+#define REMOTE_TERMINATE 2
+
 List* messagesToSend;
 List* messagesToDisplay;
 pthread_mutex_t sendListMutex, displayListMutex;
@@ -18,7 +22,8 @@ pthread_cond_t sendListCond, displayListCond;
 
 pthread_t keyboardThread, udpSenderThread, udpReceiverThread, screenOutputThread;
 
-bool terminate = false;	 // Global flag to indicate when to stop the program
+int terminate = NO_TERMINATE;  // Global flag to indicate when to stop the program
+struct timeval timeout = {0, 100000};
 
 // ... Other declarations ...
 int sender_socket_fd;	 // Socket descriptor for sending messages
@@ -35,9 +40,6 @@ void* keyboard_input_thread(void* arg);
 void* udp_sender_thread(void* arg);
 void* udp_receiver_thread(void* arg);
 void* screen_output_thread(void* arg);
-
-// Debugging function to display the contents of a list
-void displayList(List* pList);
 
 int main(int argc, char* argv[]) {
 	if (argc != 4) {
@@ -86,6 +88,11 @@ int main(int argc, char* argv[]) {
 
 	pthread_cond_destroy(&sendListCond);
 	pthread_cond_destroy(&displayListCond);
+
+	if (terminate == LOCAL_TERMINATE)
+		printf("Local Host terminated\n");
+	else
+		printf("Remote Host terminated\n");
 
 	return EXIT_SUCCESS;
 }
@@ -144,25 +151,22 @@ void* keyboard_input_thread(void* arg) {
 	char buffer[BUF_SIZE];
 
 	fd_set input;
-	FD_ZERO(&input);
-	FD_SET(STDIN_FILENO, &input);
 
 	while (1) {
-		if (select(FD_SETSIZE, &input, NULL, NULL, NULL) == -1) {
-			perror("select error");
-			exit(EXIT_FAILURE);
-		}
+		FD_ZERO(&input);
+		FD_SET(STDIN_FILENO, &input);
 
-		for (int i = 0; i < FD_SETSIZE && terminate == false; i++) {
-			if (i == STDIN_FILENO && FD_ISSET(i, &input)) {
-				fgets(buffer, BUF_SIZE, stdin);
-				fflush(stdin);
-			}
-			if (strcmp(buffer, "!") == 0) {
-				terminate = true;
+		int hasInput = select(STDIN_FILENO + 1, &input, NULL, NULL, &timeout);
+		if (hasInput <= 0) {
+			if (terminate != NO_TERMINATE) {
 				break;
 			}
+			continue;
 		}
+
+		bzero(buffer, BUF_SIZE);
+		fgets(buffer, BUF_SIZE, stdin);
+		fflush(stdin);
 
 		// Remove the trailing newline character if it exists
 		size_t len = strlen(buffer);
@@ -170,12 +174,11 @@ void* keyboard_input_thread(void* arg) {
 			buffer[len - 1] = '\0';	 // Replace newline with null terminator
 		}
 
-		if (terminate || strcmp(buffer, "!") == 0) {
-			printf("Terminating...\n");
-			terminate = true;
+		if (strcmp(buffer, "!") == 0) {
+			terminate = LOCAL_TERMINATE;
 			pthread_cond_broadcast(&sendListCond);
 			pthread_cond_broadcast(&displayListCond);
-			break;
+			// Next iteration will check the terminate flag and break out of the loop
 		}
 
 		pthread_mutex_lock(&sendListMutex);
@@ -184,7 +187,6 @@ void* keyboard_input_thread(void* arg) {
 		pthread_mutex_unlock(&sendListMutex);
 	}
 
-	printf("Joining keyboard thread\n");
 	return NULL;
 }
 
@@ -200,8 +202,12 @@ void* udp_sender_thread(void* arg) {
 			pthread_cond_wait(&sendListCond, &sendListMutex);
 		}
 
-		if (terminate) {
+		// Check if terminate flag is set by the rcv or keyboard thread
+		if (terminate == NO_TERMINATE) {
+		} else if (terminate == LOCAL_TERMINATE) {
 			write(sender_socket_fd, "!", 2);
+			break;
+		} else if (terminate == REMOTE_TERMINATE) {
 			break;
 		}
 
@@ -214,7 +220,6 @@ void* udp_sender_thread(void* arg) {
 		}
 	}
 	close(sender_socket_fd);
-	printf("Joining udp sender thread\n");
 	return NULL;
 }
 
@@ -225,28 +230,34 @@ void* udp_receiver_thread(void* arg) {
 	receiver_socket_fd = create_socket(localInfo->machineName, localInfo->port);
 
 	fd_set input;
-	FD_ZERO(&input);
-	FD_SET(receiver_socket_fd, &input);
-
 	ssize_t nread;
+
 	while (1) {
-		if (select(FD_SETSIZE, &input, NULL, NULL, NULL) == -1) {
-			perror("select error");
-			exit(EXIT_FAILURE);
+		// Check if terminate flag is set by the keyboard thread
+		if (terminate != NO_TERMINATE) {
+			break;
+		}
+
+		FD_ZERO(&input);
+		FD_SET(receiver_socket_fd, &input);
+
+		int hasInput = select(receiver_socket_fd + 1, &input, NULL, NULL, &timeout);
+		if (hasInput <= 0) {
+			if (terminate != NO_TERMINATE) {
+				break;
+			} else {
+				continue;
+			}
 		}
 
 		char buf[BUF_SIZE];
-		memset(buf, 0, BUF_SIZE);
-
-		if (FD_ISSET(receiver_socket_fd, &input)) {
-			nread = recvfrom(receiver_socket_fd, buf, BUF_SIZE, 0, NULL, NULL);
-		}
+		bzero(buf, BUF_SIZE);
+		nread = recvfrom(receiver_socket_fd, buf, BUF_SIZE, 0, NULL, NULL);
 
 		if (strcmp(buf, "!") == 0) {
-			printf("\nTerminating Request Received...\n");
 			pthread_cond_signal(&sendListCond);
 			pthread_cond_signal(&displayListCond);
-			terminate = true;
+			terminate = REMOTE_TERMINATE;
 			break;
 		}
 
@@ -262,7 +273,6 @@ void* udp_receiver_thread(void* arg) {
 		close(receiver_socket_fd);
 	}
 
-	printf("Joining udp receiver thread\n");
 	return NULL;
 }
 
@@ -272,10 +282,11 @@ void* screen_output_thread(void* arg) {
 		while (List_count(messagesToDisplay) == 0 && !terminate) {
 			pthread_cond_wait(&displayListCond, &displayListMutex);
 		}
-		if (terminate) {
-			pthread_mutex_unlock(&displayListMutex);
+
+		if (terminate != NO_TERMINATE) {
 			break;
 		}
+
 		char* msgToDisplay = (char*)List_trim(messagesToDisplay);
 		pthread_mutex_unlock(&displayListMutex);
 
@@ -284,31 +295,5 @@ void* screen_output_thread(void* arg) {
 			free(msgToDisplay);
 		}
 	}
-	printf("Joining screen output thread\n");
 	return NULL;
-}
-
-void displayList(List* pList) {
-	if (!pList) {
-		printf("List is NULL.\n");
-		return;
-	}
-
-	Node* temp = pList->head;
-	if (!temp) {
-		printf("List is empty.\n");
-		return;
-	}
-
-	printf("[");
-	while (temp) {
-		if (temp->item) {
-			if (temp->item)
-				printf("%s ", (char*)temp->item);  // Dereference the item pointer as an int
-		} else {
-			printf("NULL");
-		}
-		temp = temp->next;
-	}
-	printf("]\n");
 }
