@@ -1,5 +1,4 @@
 #include "list.h"
-#include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
 #include <stdbool.h>

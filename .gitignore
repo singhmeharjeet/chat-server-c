@@ -4,3 +4,6 @@
 !*/
 
 *.o
+
+.idea
+.vscode
