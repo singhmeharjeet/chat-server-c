@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "list.h"
+#include "list2.h"
 
 #define BUF_SIZE 500
 
@@ -32,7 +32,6 @@ int receiver_socket_fd;	 // Socket descriptor for receiving messages
 struct host {
 	char* machineName;
 	char* port;
-	char* msg;
 };
 
 void* udp_sender_thread(void* arg);
@@ -257,24 +256,18 @@ int create_socket(char* host, char* port) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(s));
 		exit(EXIT_FAILURE);
 	}
-
-	/* getaddrinfo() returns a list of address structures.
-		Try each address until we successfully connect(2).
-		If socket(2) (or connect(2)/bind(2)) fails, we (close the socket
-		and) try the next address. */
 	for (p = result; p != NULL; p = p->ai_next) {
-		// printf("this is the socketaddr data %s\n", rp->ai_addr->sa_data[]);
 		sfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
 
 		if (sfd == -1)
 			continue;
 
 		if (host == NULL) {
-			if (bind(sfd, p->ai_addr, p->ai_addrlen) == 0) /* server socket */
-				break;									   /* Success */
+			if (bind(sfd, p->ai_addr, p->ai_addrlen) == 0)
+				break;
 		} else {
-			if (connect(sfd, p->ai_addr, p->ai_addrlen) != -1) /* client socket */
-				break;										   /* Success */
+			if (connect(sfd, p->ai_addr, p->ai_addrlen) != -1)
+				break;
 		}
 
 		close(sfd);
