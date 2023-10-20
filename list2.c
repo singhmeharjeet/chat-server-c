@@ -278,7 +278,7 @@ void List_concat(List* pList1, List* pList2) {
 		pList1->numItems += pList2->numItems;
 	}
 
-	RemoveList(pList2);
+	RemoveList(&pList2);
 }
 
 // Delete pList. pItemFreeFn is a pointer to a routine that frees an item.
