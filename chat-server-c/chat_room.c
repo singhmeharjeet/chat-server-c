@@ -7,7 +7,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#include "list2.h"
+#include "list.h"
 
 #define BUF_SIZE 500
 
@@ -228,6 +228,12 @@ void* keyboard_input_thread(void* arg) {
 			}
 			continue;
 		}
+		
+		if (hasInput && terminate == REMOTE_TERMINATE) {
+			// Edge case when you are already typing but termination is requested from the other end
+			fflush(stdin);
+			break;
+		} 
 
 		bzero(buf, BUF_SIZE);
 		fgets(buf, BUF_SIZE, stdin);
