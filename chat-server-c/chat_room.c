@@ -11,7 +11,7 @@
 
 #define BUF_SIZE 500
 
-#define NO_TERMINATE	 0
+#define DONT_TERMINATE	 0
 #define LOCAL_TERMINATE	 1
 #define REMOTE_TERMINATE 2
 
@@ -22,7 +22,7 @@ pthread_cond_t sendListCond, displayListCond;
 
 pthread_t keyboardThread, udpSenderThread, udpReceiverThread, screenOutputThread;
 
-int terminate = NO_TERMINATE;  // Global flag to indicate when to stop the program
+int terminate = DONT_TERMINATE;	 // Global flag to indicate when to stop the program
 struct timeval timeout = {0, 100000};
 
 // ... Other declarations ...
@@ -35,7 +35,7 @@ struct host {
 };
 
 typedef struct {
-    char* nickname;
+	char* nickname;
 } Name;
 
 void* udp_sender_thread(void* arg);
@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
 		exit(EXIT_FAILURE);
 	}
 
-	char nickname[50];  
+	char nickname[50];
 	printf("Enter your nickname: ");
 	fgets(nickname, sizeof(nickname), stdin);
 	// Removing the trailing newline character.
@@ -120,8 +120,7 @@ void* udp_sender_thread(void* arg) {
 		}
 
 		// Check if terminate flag is set by the rcv or keyboard thread
-		if (terminate == NO_TERMINATE) {
-		} else if (terminate == LOCAL_TERMINATE) {
+		if (terminate == LOCAL_TERMINATE) {
 			write(sender_socket_fd, "!", 2);
 			break;
 		} else if (terminate == REMOTE_TERMINATE) {
@@ -155,11 +154,10 @@ void* udp_receiver_thread(void* arg) {
 
 		int hasInput = select(receiver_socket_fd + 1, &input, NULL, NULL, &timeout);
 		if (hasInput <= 0) {
-			if (terminate != NO_TERMINATE) {
+			if (terminate) {
 				break;
-			} else {
-				continue;
 			}
+			continue;
 		}
 
 		char buf[BUF_SIZE];
@@ -167,9 +165,9 @@ void* udp_receiver_thread(void* arg) {
 		nread = recvfrom(receiver_socket_fd, buf, BUF_SIZE, 0, NULL, NULL);
 
 		if (strcmp(buf, "!") == 0) {
+			terminate = REMOTE_TERMINATE;
 			pthread_cond_signal(&sendListCond);
 			pthread_cond_signal(&displayListCond);
-			terminate = REMOTE_TERMINATE;
 			break;
 		}
 
@@ -195,7 +193,7 @@ void* screen_output_thread(void* arg) {
 			pthread_cond_wait(&displayListCond, &displayListMutex);
 		}
 
-		if (terminate != NO_TERMINATE) {
+		if (terminate) {
 			break;
 		}
 
@@ -212,8 +210,8 @@ void* screen_output_thread(void* arg) {
 
 void* keyboard_input_thread(void* arg) {
 	Name* name = (Name*)arg;
-    char buf[BUF_SIZE];
-    char msgWithNickname[BUF_SIZE + 50];
+	char buf[BUF_SIZE];
+	char msgWithNickname[BUF_SIZE + 50];
 
 	fd_set input;
 
@@ -223,17 +221,17 @@ void* keyboard_input_thread(void* arg) {
 
 		int hasInput = select(STDIN_FILENO + 1, &input, NULL, NULL, &timeout);
 		if (hasInput <= 0) {  // No input from keyboard
-			if (terminate != NO_TERMINATE) {
+			if (terminate != DONT_TERMINATE) {
 				break;
 			}
 			continue;
 		}
-		
+
 		if (hasInput && terminate == REMOTE_TERMINATE) {
 			// Edge case when you are already typing but termination is requested from the other end
 			fflush(stdin);
 			break;
-		} 
+		}
 
 		bzero(buf, BUF_SIZE);
 		fgets(buf, BUF_SIZE, stdin);
@@ -246,9 +244,9 @@ void* keyboard_input_thread(void* arg) {
 		}
 
 		if (strcmp(buf, "!") == 0) {
+			terminate = LOCAL_TERMINATE;
 			pthread_cond_broadcast(&sendListCond);
 			pthread_cond_broadcast(&displayListCond);
-			terminate = LOCAL_TERMINATE;
 		}
 
 		snprintf(msgWithNickname, sizeof(msgWithNickname), "%s: %s", name->nickname, buf);
